@@ -1,0 +1,16 @@
+.DS_Store
+papers/
+docs/ADR/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.so
+.env
+.venv/

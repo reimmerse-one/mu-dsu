@@ -1,0 +1,6 @@
+var total = 0;
+for (var i = 0; i < 3; ++i) {
+    for (var j = 0; j < 4; ++j) {
+        total = total + 1;
+    };
+};
