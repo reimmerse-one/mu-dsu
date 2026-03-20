@@ -4,8 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mu-dsu"
-version = "0.1.0"
+version = "0.1.0a1"
 description = "μ-DSU: Micro-language based Dynamic Software Updating framework. Reimplementation of Cazzola et al. (2017)."
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Topic :: Software Development :: Interpreters",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
