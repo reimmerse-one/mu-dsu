@@ -82,17 +82,24 @@ class Interpreter:
         self._parse_tree = parser.parse(source)
         return self._parse_tree
 
-    def run(self, source: str | None = None, role: str = "execution") -> Any:
+    def run(
+        self,
+        source: str | None = None,
+        role: str = "execution",
+        subtree: Tree | None = None,
+    ) -> Any:
         """Execute a program.
 
         If source is given, parse it first. Otherwise use the previously loaded tree.
+        If subtree is given, execute from that node instead of the root.
         """
         if source is not None:
             self.load(source)
-        if self._parse_tree is None:
+        target = subtree if subtree is not None else self._parse_tree
+        if target is None:
             raise RuntimeError("No program loaded — call load() or pass source to run()")
         self._current_role = role
-        return self._visit(self._parse_tree)
+        return self._visit(target)
 
     def invalidate_parser(self) -> None:
         """Force parser rebuild on next parse — called after slice swap."""

@@ -426,7 +426,7 @@ Full conformance report with I/O tables, exact-match checks, and known deviation
 | Slice count | 13 slices for HooverLang | 10 slices (Lark's `+` handles lists natively, no need for separate StateLst/EventList/TransList slices) |
 | Grammar composition | Neverlang merges grammar fragments at the framework level | Lark grammar string concatenation + rule merging with `\|` |
 | Parser hot-swap | Neverlang modifies parser in-place without regeneration | Lark requires parser rebuild on slice change (cached, only rebuilt when slices actually change) |
-| `production` context binding | Used in Listing 8 for labelled productions | We use `nt` binding (both map names to node types; `production` is a synonym we support in parsing but resolve identically) |
+| `production` context binding | Used in Listing 8 for labelled productions | `production` is accepted as a grammar-level synonym for `nt` — both map names to node types and resolve identically |
 | Event manager | Bash `while true; do ... done` loop (Listing 6a) | Async `EventManager` with `EventBus`, typed subscriptions, priority queue, multiple source types |
 | `<<` operator direction | Paper Table 1: "id₂ can be reached from id₁" | Our `ReachablePathMatch(descendant=id₁, ancestor=id₂)` — field names are misleading but semantics match: id₁ is the container, id₂ is the target |
 | Localised action dispatch | Neverlang attaches "agents" to matched PT nodes | We wrap handlers with node-identity checks; requires reusing the same parse tree (no reparse after localised adaptation) |

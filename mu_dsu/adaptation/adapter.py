@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from lark import Tree
+
 from mu_dsu.adaptation.context import ContextResolver, ResolvedContext
 from mu_dsu.adaptation.matcher import ParseTreeMatcher
 from mu_dsu.adaptation.mu_da_parser import MuDaParser
@@ -94,8 +96,12 @@ class MicroLanguageAdapter:
 
             elif isinstance(op, RedoRole):
                 role = op.role or "execution"
-                interpreter.run(role=role)
-                applied.append(f"redo(role={role})")
+                subtree = None
+                if op.from_node and interpreter.parse_tree is not None:
+                    node_type = ctx.nonterminals.get(op.from_node, op.from_node)
+                    subtree = self._find_subtree(interpreter.parse_tree, node_type)
+                interpreter.run(role=role, subtree=subtree)
+                applied.append(f"redo(role={role}, from={op.from_node})")
 
         return applied
 
@@ -111,6 +117,11 @@ class MicroLanguageAdapter:
         for node in matched:
             for manip in clause.manipulations:
                 if isinstance(manip, AddAction):
+                    # If target_name specified, skip nodes that don't match
+                    if manip.target_name:
+                        target_type = ctx.nonterminals.get(manip.target_name, manip.target_name)
+                        if target_type != node.data:
+                            continue
                     action = ctx.actions[manip.action_name]
                     # Wrap handler with node identity check
                     filtered = self._make_node_filtered_action(action, node)
@@ -118,6 +129,11 @@ class MicroLanguageAdapter:
                     applied.append(f"add_action({action.id} to {node.data})")
 
                 elif isinstance(manip, RemoveAction):
+                    # If target_name specified, skip nodes that don't match
+                    if manip.target_name:
+                        target_type = ctx.nonterminals.get(manip.target_name, manip.target_name)
+                        if target_type != node.data:
+                            continue
                     interpreter.actions.unregister(
                         node.data, manip.role, action_id=manip.action_name
                     )
@@ -139,6 +155,18 @@ class MicroLanguageAdapter:
                     applied.append(f"set_specialized({action.id} for {node.data})")
 
         return applied
+
+    @staticmethod
+    def _find_subtree(tree: Any, node_type: str) -> Any | None:
+        """Find first subtree matching node_type in the parse tree."""
+        if isinstance(tree, Tree):
+            if tree.data == node_type:
+                return tree
+            for child in tree.children:
+                result = MicroLanguageAdapter._find_subtree(child, node_type)
+                if result is not None:
+                    return result
+        return None
 
     def _make_node_filtered_action(
         self, action: SemanticAction, target_node: Any

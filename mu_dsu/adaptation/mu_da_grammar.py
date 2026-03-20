@@ -11,7 +11,7 @@ MU_DA_GRAMMAR = r"""
     context_def: slice_def | nt_def | action_def
 
     slice_def: ENDEMIC? "slice" name_list ":" QUALIFIED_NAME ";"
-    nt_def: "nt" name_list ":" NAME "from" "module" QUALIFIED_NAME ";"
+    nt_def: ("nt" | "production") name_list ":" NAME "from" "module" QUALIFIED_NAME ";"
     action_def: "action" NAME ":" NAME "from" "module" QUALIFIED_NAME "role" NAME ";"
 
     name_list: NAME ("," NAME)*

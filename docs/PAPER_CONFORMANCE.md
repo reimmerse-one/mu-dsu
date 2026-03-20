@@ -163,21 +163,20 @@ Architectural and behavioral properties claimed in the paper.
 
 All 12 operations from Table 1 parse correctly in our μDA grammar:
 
-| Category | Operation | Parses? | Executes? |
-|---|---|---|---|
-| Context | `[endemic] slice «id» : «slc» ;` | yes | yes |
-| Context | `nt «id» : «rule» from module «mod» ;` | yes | yes |
-| Context | `action «id» : «nt» from module «mod» role «name» ;` | yes | yes |
-| Matching | `«id»[«cond»]` (node match) | yes | yes |
-| Matching | `«id1» < «id2» [│ «id»]` (parent path) | yes | yes |
-| Matching | `«id1» << «id2» [│ «id»]` (reachable path) | yes | yes |
-| Manipulation | `add action «id» [to «id»] in role «name» ;` | yes | yes |
-| Manipulation | `remove action «id» [from «id»] in role «name» ;` | yes | yes |
-| Manipulation | `set specialized action for «id» to «id» in role «name» ;` | yes | yes |
-| System-wide | `replace slice «id1» with «id2» ;` | yes | yes |
-| System-wide | `redo [from «node»] [role «name»] ;` | yes | yes |
-
-> Missing from Table 1: `production «id» : «rule» from module «mod» ;` — we parse it as `nt` (functionally identical in our implementation).
+| Category | Operation | Parses? | Executes? | Notes |
+|---|---|---|---|---|
+| Context | `[endemic] slice «id» : «slc» ;` | yes | partial | `endemic` flag parsed and stored but not enforced at runtime (no module namespace scoping); see Known Deviations |
+| Context | `nt «id» : «rule» from module «mod» ;` | yes | yes | |
+| Context | `production «id» : «rule» from module «mod» ;` | yes | yes | Accepted as grammar-level synonym for `nt`; both resolve identically |
+| Context | `action «id» : «nt» from module «mod» role «name» ;` | yes | yes | |
+| Matching | `«id»[«cond»]` (node match) | yes | yes | |
+| Matching | `«id1» < «id2» [│ «id»]` (parent path) | yes | yes | |
+| Matching | `«id1» << «id2» [│ «id»]` (reachable path) | yes | yes | |
+| Manipulation | `add action «id» [to «id»] in role «name» ;` | yes | yes | `to «id»` used as target filter on matched nodes |
+| Manipulation | `remove action «id» [from «id»] in role «name» ;` | yes | yes | `from «id»` used as target filter on matched nodes |
+| Manipulation | `set specialized action for «id» to «id» in role «name» ;` | yes | yes | |
+| System-wide | `replace slice «id1» with «id2» ;` | yes | yes | |
+| System-wide | `redo [from «node»] [role «name»] ;` | yes | yes | `from «node»` executes from the first matching subtree |
 
 > Test: `test_paper_conformance.py::TestTable1_MuDaDSL`
 
@@ -209,11 +208,15 @@ All 12 operations from Table 1 parse correctly in our μDA grammar:
 | Slice count | 13 slices for HooverLang | 10 slices | Lark's `+` absorbs StateLst/EventList/TransList |
 | Grammar composition | Neverlang merges at framework level | Lark string concatenation + rule merging | Different parsing framework |
 | Parser hot-swap | In-place without regeneration | Full parser rebuild (cached) | Lark limitation |
-| `production` binding | Separate from `nt` | Parsed but resolved identically to `nt` | Functionally equivalent |
+| `production` binding | Separate from `nt` | `production` accepted as grammar synonym for `nt`; both resolve identically | Functionally equivalent |
 | Event manager | Bash `while true; do` loop | Async `EventManager` with typed events | Intentional improvement |
 | `<<` operator | Not fully specified in paper | Interpreted as "from id₁ reach id₂" | Our best reading of Table 1 |
 | Localised dispatch | Neverlang "agents" on PT nodes | Handler wrapping with node-identity check | Requires same parse tree (no reparse after localised adaptation) |
 | Component ⑤ | *"Under investigation"* | Implemented with AST analysis + LLM | Novel contribution |
+| `endemic` keyword | Scope-limits a slice to the defining module | Flag parsed and stored (`SliceBinding.endemic`) but not enforced at runtime | No Neverlang module namespace system; would require namespace scoping layer |
+| Localised `target_name` | `add action X to Y` / `remove action X from Y` target a specific nonterminal | `target_name` used as filter: only matched nodes whose type matches `target_name` receive the action. Targeting is achieved via path expression + node identity filtering, not via the Neverlang agent mechanism | Behavioral equivalence; mechanistic difference |
+| Event subscriptions | Paper links event → feature → micro-language context | `Subscription.micro_language` and `Subscription.context` fields defined but unused; event→adaptation link works through `adaptation_script` directly | Simpler model; the script itself carries full context |
+| Localised adaptation model | Neverlang attaches "agents" to AST/PT nodes that intercept dispatch | We wrap action handlers with node-identity closures (`_make_node_filtered_action`); this requires reusing the same parse tree instance — reparsing creates new node objects and breaks identity | Documented engineering tradeoff; behavioral equivalence confirmed by study 3 (Mandelbrot localised parallelisation) |
 
 ## Summary
 
@@ -225,3 +228,11 @@ All 12 operations from Table 1 parse correctly in our μDA grammar:
 | **Total** | **88** | **100%** | |
 
 **Caveat:** All verification is against the paper's text. The original Neverlang/Java source code was never published. We cannot guarantee bit-for-bit equivalence with the original implementation — only that our system behaves as the paper describes.
+
+## Conformance Level
+
+This is a **paper-faithful reimplementation** — behavioral equivalence at the level of architecture, studies, and DSL semantics. It is **not** a mechanistic port of the Neverlang runtime. Specific distinctions:
+
+- **Behavioral equivalence** (confirmed): all three studies produce the same outputs as the paper describes; all 12 Table 1 operations are parsed; system-wide and localised adaptation modes work as specified.
+- **Mechanistic differences** (documented above): localised dispatch uses handler wrapping instead of PT agents; `endemic` scoping is not enforced; event→micro-language link is simplified.
+- **Grammar coverage**: all Table 1 forms including `production` (as `nt` synonym) are accepted. The `redo` operation supports both `from «node»` and `role «name»` optional arguments.
