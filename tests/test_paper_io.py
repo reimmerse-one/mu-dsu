@@ -475,3 +475,176 @@ for (var i = 0; i < 3; ++i) {
         assert parallel_count_sw == 4   # ALL for loops parallel
         assert parallel_count_loc == 3  # only inner for parallel
         assert seq_count_loc == 1       # outer for still sequential
+
+
+# ============================================================================
+# Sect. 5.2 (informal evaluation) — Mid-run adaptation
+#
+# Paper: "As the application is running, we plug in the laptop, thus
+# triggering adaptation to multi-core calculation. ... As expected, the
+# sooner the parallel implementation of the for statement was used in the
+# running application, the larger was the achieved speed up."
+#
+# The adaptation must land DURING a single execution: iterations already
+# done stay sequential, the remaining ones run with the parallel for —
+# without restarting the program and without changing its result.
+# ============================================================================
+
+class TestIO_Sect52_MidRunAdaptation:
+    """Input: nested for + a 'power plugged' event fired mid-execution.
+    Output: total=12 (unchanged), execution modes switch within one run.
+    """
+
+    # No 'redo': the interpretation continues from the suspension point
+    # with the adapted interpreter (Sect. 4.2), it is not restarted.
+    PLUG_IN_SCRIPT = """\
+slice old: calc.for_loop;
+slice new: calc.par_for_loop;
+system-wide {
+    replace slice old with new;
+}
+"""
+
+    def test_plug_in_laptop_mid_run(self):
+        from mu_dsu.core.slice import SemanticAction
+        from mu_dsu.events.manager import EventManager
+        from mu_dsu.events.types import Event, Subscription
+        from mu_dsu.studies.study3_mandelbrot.programs import NESTED_FOR_SIMPLE
+        from mu_dsu.studies.study3_mandelbrot.study import MandelbrotStudy
+
+        study = MandelbrotStudy()
+        manager = EventManager(interpreter=study.interpreter, adapter=study.adapter)
+        manager.subscribe(Subscription(
+            event_pattern="power.plugged",
+            adaptation_script=self.PLUG_IN_SCRIPT,
+        ))
+
+        state = {"for_visits": 0, "results": None}
+
+        def acpi_probe(node, ctx):
+            """Event manager stand-in for Listing 9's acpi polling loop."""
+            state["for_visits"] += 1
+            # Visit 1 = outer for, visit 2 = first inner for.
+            # Plug in the laptop just before the SECOND inner for runs.
+            if state["for_visits"] == 3:
+                state["results"] = manager.process_event(
+                    Event(type="power.plugged", source="acpi")
+                )
+
+        study.interpreter.actions.register(SemanticAction(
+            node_type="for_stmt", role="execution", phase="before",
+            handler=acpi_probe, id="test.acpi.probe",
+        ))
+
+        study.run(NESTED_FOR_SIMPLE)
+
+        # The adaptation was applied mid-run and succeeded
+        assert state["results"] is not None
+        assert state["results"][0].success
+
+        # Same computation result despite the mid-run switch
+        assert study.interpreter.env.get("total") == 12
+
+        # One inner iteration ran before plugging in (sequential), the
+        # remaining two after it (parallel); the outer for had already
+        # been dispatched with the sequential implementation.
+        modes = study.execution_modes
+        assert modes[0] == "sequential"          # inner for, lap 1
+        assert modes.count("parallel") == 2      # inner for, laps 2-3
+        assert modes.count("sequential") == 2    # lap 1 + outer for
+
+
+# ============================================================================
+# Fig. 2(c) + Sect. 3.2 — Seamless Stand-by Adaptation
+#
+# Paper: "the turn-on operation will not only turn on the appliance but
+# also store the timestamp of when it is turned on"; the activity and
+# time_elapsed events appear "as a sort of a side effect of the changes
+# to the language semantics" (dashed edges in Fig. 2(c)):
+#   on --activity--> on   (resets the stored time)
+#   on --elapsed-->  off  (prolonged inactivity)
+# The application program is the UNCHANGED Listing 2(a) — the behaviour
+# comes entirely from the adapted μ_ton semantics.
+# ============================================================================
+
+class TestIO_Fig2c_SeamlessStandby:
+    """Input: Listing 2(a) program + standby adaptation + activity signals.
+    Output: Fig. 2(c) merged-nodes behaviour, program untouched.
+    """
+
+    def _adapted_study(self):
+        from mu_dsu.studies.study1_vacuum.study import VacuumCleanerStudy
+
+        study = VacuumCleanerStudy()
+        study.load()
+        assert study.trigger_adaptation()
+        return study
+
+    def test_program_and_parse_tree_untouched(self):
+        """'the application source code will be left untouched'"""
+        from mu_dsu.studies.study1_vacuum.study import VacuumCleanerStudy
+
+        study = VacuumCleanerStudy()
+        study.load()
+        text_before = study.program_text
+        tree_before = study.interpreter.parse_tree
+
+        assert study.trigger_adaptation()
+
+        assert study.program_text == text_before
+        assert study.interpreter.parse_tree is tree_before
+        assert study.has_standby_semantics
+
+    def test_turns_off_after_prolonged_inactivity(self):
+        """Fig. 2(c): on --time_elapsed--> off, without any click."""
+        from mu_dsu.languages.state_machine.slices.state_standby import (
+            INACTIVITY_LIMIT,
+        )
+
+        study = self._adapted_study()
+        study.interpreter.env.set_global("get.click", lambda: False)
+        assert study.runner.current_state == "on"
+
+        for _ in range(INACTIVITY_LIMIT):
+            study.runner.step()
+        assert study.runner.current_state == "on"   # t=10, not yet > 10
+
+        study.runner.step()                          # t=11 > 10
+        assert study.runner.current_state == "off"
+
+    def test_activity_resets_stored_time(self):
+        """Fig. 2(c): on --activity--> on; 'The former event will reset
+        the stored time as a consequence of some activity'."""
+        from mu_dsu.languages.state_machine.slices.state_standby import (
+            INACTIVITY_LIMIT,
+        )
+
+        study = self._adapted_study()
+        study.interpreter.env.set_global("get.click", lambda: False)
+        active = {"v": False}
+        study.interpreter.env.set_global("get.activity", lambda: active["v"])
+
+        for _ in range(5):
+            study.runner.step()
+        assert study.interpreter.env.get("__sm_t__") == 5
+
+        active["v"] = True
+        study.runner.step()
+        assert study.runner.current_state == "on"
+        assert study.interpreter.env.get("__sm_t__") == 0  # timestamp stored anew
+
+        active["v"] = False
+        for _ in range(INACTIVITY_LIMIT + 1):
+            study.runner.step()
+        assert study.runner.current_state == "off"
+
+    def test_click_behaviour_preserved(self):
+        """The original Fig. 2(a) click transitions still work after
+        adaptation — the new behaviour extends, not replaces, μ_ton."""
+        clicks = iter([True])
+        study = self._adapted_study()
+        study.interpreter.env.set_global(
+            "get.click", lambda: next(clicks, False)
+        )
+        study.runner.step()
+        assert study.runner.current_state == "off"

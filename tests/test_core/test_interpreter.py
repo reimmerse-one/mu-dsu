@@ -127,3 +127,69 @@ class TestInterpreter:
         # Parser should be rebuilt on next load
         tree = interp.load("99")
         assert tree is not None
+
+
+class TestUpdatePoints:
+    """Sect. 4.2 of the paper: an event 'blocks the interpretation of the
+    application' and 'the interpretation is resumed from the point of the
+    previous suspension, but using the adapted interpreter'.
+
+    Every node visit is an update point: pause() from another thread blocks
+    execution there; resume() continues it in place — no restart.
+    """
+
+    PROGRAM = "var i = 0;\nfor (var k = 0; k < 3000; ++k) {\n    i = i + 1;\n};\n"
+
+    def _make_calc_interpreter(self) -> Interpreter:
+        from mu_dsu.languages.calc_lang import compose_calclang
+
+        composer, actions = compose_calclang()
+        return Interpreter(composer, actions)
+
+    def test_pause_blocks_at_update_point_resume_continues(self):
+        import threading
+        import time
+
+        interp = self._make_calc_interpreter()
+        visits = {"n": 0}
+        progressed = threading.Event()
+
+        def probe(node, ctx):
+            visits["n"] += 1
+            if visits["n"] >= 20:
+                progressed.set()
+
+        interp.actions.register(
+            SemanticAction(
+                node_type="assign_stmt", role="execution", phase="before",
+                handler=probe, id="test.update_point.probe",
+            )
+        )
+
+        worker = threading.Thread(target=lambda: interp.run(self.PROGRAM))
+        worker.start()
+        assert progressed.wait(timeout=15), "worker never started visiting nodes"
+
+        interp.pause()
+        time.sleep(0.1)  # let the worker reach its next update point
+        frozen_at = visits["n"]
+        time.sleep(0.2)
+        # Blocked at an update point: no further visits while paused
+        # (allow one in-flight visit that had already passed the check)
+        assert visits["n"] <= frozen_at + 1
+        assert worker.is_alive(), "worker must be suspended, not finished"
+
+        interp.resume()
+        worker.join(timeout=15)
+        assert not worker.is_alive(), "worker must complete after resume"
+        # Resumed from the suspension point — the full computation finished
+        assert interp.env.get("i") == 3000
+
+    def test_pause_resume_flags(self):
+        interp = self._make_calc_interpreter()
+        assert not interp.is_paused
+        interp.pause()
+        assert interp.is_paused
+        interp.resume()
+        assert not interp.is_paused
+        assert not interp.is_running

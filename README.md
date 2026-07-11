@@ -31,7 +31,7 @@ A programming language is composed from **slices** — modular units bundling gr
 
 ```bash
 pip install -e ".[dev]"
-pytest  # 188 tests
+pytest  # 294 tests
 ```
 
 ## Usage
@@ -287,7 +287,7 @@ when child < parent occurs {
 
 // Match by reachable path (any ancestor) with filter
 when inner_for << outer_for | outer_for occurs {
-    set specialized action for outer_for to parAct in role execution;
+    set specialized action parAct to outer_for in role execution;
 }
 ```
 
@@ -321,7 +321,7 @@ mu_dsu/
 │       ├── slices/                # 10 composable slices
 │       ├── examples/              # Default + standby programs
 │       └── runner.py              # Step-driven SM executor
-tests/                             # 283 tests
+tests/                             # 294 tests
 ├── test_core/                     # 61 tests — slices, composer, actions, interpreter
 ├── test_adaptation/               # 19 tests — μDA parser, context, matcher, adapter
 ├── test_events/                   # 35 tests — bus, manager, sources, integration
@@ -409,11 +409,11 @@ This transforms μ-DSU from a framework that requires deep language engineering 
 
 Full conformance report with I/O tables, exact-match checks, and known deviations: **[`docs/PAPER_CONFORMANCE.md`](docs/PAPER_CONFORMANCE.md)**
 
-88 verification tests across three levels, all passing:
+93 verification tests across three levels, all passing:
 
 | Test suite | What it proves | Tests |
 |---|---|---|
-| [`tests/test_paper_io.py`](tests/test_paper_io.py) | Same inputs → same outputs as paper describes | 15 |
+| [`tests/test_paper_io.py`](tests/test_paper_io.py) | Same inputs → same outputs as paper describes | 20 |
 | [`tests/test_paper_exact_match.py`](tests/test_paper_exact_match.py) | Specific values from paper reproduced exactly | 19 |
 | [`tests/test_paper_conformance.py`](tests/test_paper_conformance.py) | Architectural and behavioral properties hold | 54 |
 
@@ -426,7 +426,6 @@ Full conformance report with I/O tables, exact-match checks, and known deviation
 | Slice count | 13 slices for HooverLang | 10 slices (Lark's `+` handles lists natively, no need for separate StateLst/EventList/TransList slices) |
 | Grammar composition | Neverlang merges grammar fragments at the framework level | Lark grammar string concatenation + rule merging with `\|` |
 | Parser hot-swap | Neverlang modifies parser in-place without regeneration | Lark requires parser rebuild on slice change (cached, only rebuilt when slices actually change) |
-| `production` context binding | Used in Listing 8 for labelled productions | `production` is accepted as a grammar-level synonym for `nt` — both map names to node types and resolve identically |
 | Event manager | Bash `while true; do ... done` loop (Listing 6a) | Async `EventManager` with `EventBus`, typed subscriptions, priority queue, multiple source types |
 | `<<` operator direction | Paper Table 1: "id₂ can be reached from id₁" | Our `ReachablePathMatch(descendant=id₁, ancestor=id₂)` — field names are misleading but semantics match: id₁ is the container, id₂ is the target |
 | Localised action dispatch | Neverlang attaches "agents" to matched PT nodes | We wrap handlers with node-identity checks; requires reusing the same parse tree (no reparse after localised adaptation) |

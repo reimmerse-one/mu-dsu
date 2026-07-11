@@ -90,18 +90,34 @@ class StateMachineRunner:
         return visited
 
     def _enter_state(self, state_name: str) -> None:
-        """Enter a state: execute its initialization actions."""
+        """Enter a state: execute its initialization actions.
+
+        Adapted language semantics may register extra entry behaviour in
+        __sm_on_enter__ (e.g., the seamless stand-by slice makes turn-on
+        also store the inactivity timestamp — Sect. 3.2 of the paper).
+        """
         self._current_state = state_name
-        states = self._interp.env.get("__sm_states__")
+        env = self._interp.env
+        states = env.get("__sm_states__")
         action_node = states.get(state_name)
         if action_node is not None:
             self._interp._visit(action_node)
+        if env.has("__sm_on_enter__"):
+            hook = env.get("__sm_on_enter__").get(state_name)
+            if hook is not None:
+                hook(env)
 
     def _evaluate_event(self, event_name: str) -> bool:
-        """Evaluate an event condition by re-visiting its AST node."""
+        """Evaluate an event condition.
+
+        Events declared in the program are stored as AST nodes and
+        re-visited; internal events introduced by adapted semantics
+        (Fig. 2(c) dashed transitions) are stored as callables.
+        """
         events = self._interp.env.get("__sm_events__")
-        condition_node = events.get(event_name)
-        if condition_node is None:
+        condition = events.get(event_name)
+        if condition is None:
             return False
-        result = self._interp._visit(condition_node)
-        return bool(result)
+        if callable(condition):
+            return bool(condition(self._interp.env))
+        return bool(self._interp._visit(condition))

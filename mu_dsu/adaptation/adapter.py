@@ -140,6 +140,11 @@ class MicroLanguageAdapter:
                     applied.append(f"remove_action({manip.action_name} from {node.data})")
 
                 elif isinstance(manip, SetSpecialized):
+                    # If target_name specified, skip nodes that don't match
+                    if manip.target_name:
+                        target_type = ctx.nonterminals.get(manip.target_name, manip.target_name)
+                        if target_type != node.data:
+                            continue
                     action = ctx.actions[manip.action_name]
                     filtered = self._make_node_filtered_action(action, node)
                     # Replace existing action for this node type

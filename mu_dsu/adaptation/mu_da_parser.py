@@ -55,6 +55,10 @@ class _MuDaTransformer(Transformer):
         module_name = str(items[2])
         return NonterminalBinding(names=names, rule_name=rule_name, module_name=module_name)
 
+    def production_def(self, items):
+        # Table 1 'production' — binds a rule to a name; resolved like 'nt'
+        return self.nt_def(items)
+
     def action_def(self, items):
         name = str(items[0])
         nonterminal = str(items[1])
@@ -141,11 +145,13 @@ class _MuDaTransformer(Transformer):
         return RemoveAction(action_name=action_name, role=role, target_name=target_name)
 
     def set_specialized(self, items):
-        return SetSpecialized(
-            nonterminal_name=str(items[0]),
-            action_name=str(items[1]),
-            role=str(items[2]),
-        )
+        action_name = str(items[0])
+        target_name = None
+        role = str(items[-1])
+        for item in items[1:-1]:
+            if isinstance(item, Tree) and item.data == "set_target":
+                target_name = str(item.children[0])
+        return SetSpecialized(action_name=action_name, role=role, target_name=target_name)
 
 
 class MuDaParser:

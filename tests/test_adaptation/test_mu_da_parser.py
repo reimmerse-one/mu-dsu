@@ -172,7 +172,7 @@ class TestLocalisedScripts:
             action parAct : trans_rule from module sm.transition role execution;
         }
         when for1 << for2 | for2 occurs {
-            set specialized action for for2 to parAct in role execution;
+            set specialized action parAct to for2 in role execution;
         }
         """
         result = parser.parse(script)
@@ -183,7 +183,7 @@ class TestLocalisedScripts:
         assert clause.match_expr.filter_name == "for2"
 
         assert isinstance(clause.manipulations[0], SetSpecialized)
-        assert clause.manipulations[0].nonterminal_name == "for2"
+        assert clause.manipulations[0].target_name == "for2"
         assert clause.manipulations[0].action_name == "parAct"
 
     def test_node_match_with_conditions(self, parser):

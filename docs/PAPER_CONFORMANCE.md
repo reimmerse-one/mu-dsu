@@ -79,6 +79,31 @@ Key result: **same computation (total=12) regardless of execution strategy** —
 
 > Test: `test_paper_io.py::TestIO_Sect52_Mandelbrot`
 
+### Sect. 5.2 (informal evaluation) — Mid-Run Adaptation
+
+Paper: *"As the application is running, we plug in the laptop, thus triggering adaptation to multi-core calculation"* — the adaptation lands **during** a single execution, without restarting the program.
+
+| Input | Expected | Our output | Status |
+|---|---|---|---|
+| nested for + `power.plugged` event fired before the 2nd inner for | total=12, modes switch mid-run | inner: 1× sequential then 2× parallel, outer sequential, total=12 | exact match |
+
+The event manager pauses the interpreter, the adaptation is applied at the next update point (node visit), and *"the interpretation is resumed from the point of the previous suspension, but using the adapted interpreter"* (Sect. 4.2) — no `redo`, no restart.
+
+> Test: `test_paper_io.py::TestIO_Sect52_MidRunAdaptation`, `test_interpreter.py::TestUpdatePoints`
+
+### Fig. 2(c) — Seamless Stand-by (unchanged program)
+
+Paper Sect. 3.2: after adapting μ_ton, *"the turn-on operation will not only turn on the appliance but also store the timestamp"*, and the internal activity/time_elapsed events appear *"as a sort of a side effect of the changes to the language semantics"*. The application program stays the verbatim Listing 2(a).
+
+| Input | Expected output | Our output | Status |
+|---|---|---|---|
+| adaptation, then program text / parse tree | untouched | identical string, same tree object | exact match |
+| no clicks, no activity, 11 steps | on ×10 → off (t > 10) | `current_state="off"` at step 11 | exact match |
+| 5 inactive steps, then activity | on, stored time reset | `current_state="on"`, `t=0` | exact match |
+| click after adaptation | off (Fig. 2(a) behaviour preserved) | `current_state="off"` | exact match |
+
+> Test: `test_paper_io.py::TestIO_Fig2c_SeamlessStandby`
+
 ## Exact-Match Verification
 
 Values stated verbatim in the paper that we reproduce exactly.
@@ -166,17 +191,19 @@ All 12 operations from Table 1 parse correctly in our μDA grammar:
 | Category | Operation | Parses? | Executes? | Notes |
 |---|---|---|---|---|
 | Context | `[endemic] slice «id» : «slc» ;` | yes | partial | `endemic` flag parsed and stored but not enforced at runtime (no module namespace scoping); see Known Deviations |
-| Context | `nt «id» : «rule» from module «mod» ;` | yes | yes | |
-| Context | `production «id» : «rule» from module «mod» ;` | yes | yes | Accepted as grammar-level synonym for `nt`; both resolve identically |
+| Context | `production «id1», [«id2»,...] : «rule» from module «mod» ;` | yes | yes (resolved like `nt`) | Table 1 defines `production` and `nt` as separate bindings; both resolve to the rule name in this implementation |
+| Context | `nt «id1», [«id2»,...] : «rule» from module «mod» ;` | yes | yes | |
 | Context | `action «id» : «nt» from module «mod» role «name» ;` | yes | yes | |
 | Matching | `«id»[«cond»]` (node match) | yes | yes | |
 | Matching | `«id1» < «id2» [│ «id»]` (parent path) | yes | yes | |
 | Matching | `«id1» << «id2» [│ «id»]` (reachable path) | yes | yes | |
 | Manipulation | `add action «id» [to «id»] in role «name» ;` | yes | yes | `to «id»` used as target filter on matched nodes |
 | Manipulation | `remove action «id» [from «id»] in role «name» ;` | yes | yes | `from «id»` used as target filter on matched nodes |
-| Manipulation | `set specialized action for «id» to «id» in role «name» ;` | yes | yes | |
+| Manipulation | `set specialized action «id1» [to «id2»] in role «name» ;` | yes | yes | Table 1 order: `«id1»` is the action, optional `«id2»` is the target filter (defaults to the matched node) |
 | System-wide | `replace slice «id1» with «id2» ;` | yes | yes | |
-| System-wide | `redo [from «node»] [role «name»] ;` | yes | yes | `from «node»` executes from the first matching subtree |
+| System-wide | `redo [from «node»] [in role «name»] ;` | yes | yes | `from «node»` executes from the first matching subtree; `in` is optional (Listing 6(b) omits it) |
+
+> The `context { … }` wrapper is optional — the paper's listings (6(b), 8) use bare context definitions and parse verbatim.
 
 > Test: `test_paper_conformance.py::TestTable1_MuDaDSL`
 
@@ -201,6 +228,18 @@ All 12 operations from Table 1 parse correctly in our μDA grammar:
 
 > Test: `test_paper_conformance.py::TestSect42_AdaptationModes`
 
+### Sect. 4.2 — Update Points (pause / adapt / resume)
+
+Paper: *"Each event blocks the interpretation of the application. […] the interpretation is resumed from the point of the previous suspension, but using the adapted interpreter."*
+
+| Property | Our implementation | Verified? |
+|---|---|---|
+| Event blocks interpretation | `pause()` suspends execution at the next node visit (update point) | yes |
+| Resume from suspension point | `resume()` continues in place — no restart, computation completes | yes |
+| Adapted interpreter takes effect mid-run | slice swap during a run changes the semantics of the remaining visits | yes |
+
+> Test: `test_interpreter.py::TestUpdatePoints`, `test_paper_io.py::TestIO_Sect52_MidRunAdaptation`
+
 ## Known Deviations
 
 | Area | Original (Neverlang/Java) | Our implementation | Reason |
@@ -208,24 +247,25 @@ All 12 operations from Table 1 parse correctly in our μDA grammar:
 | Slice count | 13 slices for HooverLang | 10 slices | Lark's `+` absorbs StateLst/EventList/TransList |
 | Grammar composition | Neverlang merges at framework level | Lark string concatenation + rule merging | Different parsing framework |
 | Parser hot-swap | In-place without regeneration | Full parser rebuild (cached) | Lark limitation |
-| `production` binding | Separate from `nt` | `production` accepted as grammar synonym for `nt`; both resolve identically | Functionally equivalent |
 | Event manager | Bash `while true; do` loop | Async `EventManager` with typed events | Intentional improvement |
 | `<<` operator | Not fully specified in paper | Interpreted as "from id₁ reach id₂" | Our best reading of Table 1 |
 | Localised dispatch | Neverlang "agents" on PT nodes | Handler wrapping with node-identity check | Requires same parse tree (no reparse after localised adaptation) |
 | Component ⑤ | *"Under investigation"* | Implemented with AST analysis + LLM | Novel contribution |
 | `endemic` keyword | Scope-limits a slice to the defining module | Flag parsed and stored (`SliceBinding.endemic`) but not enforced at runtime | No Neverlang module namespace system; would require namespace scoping layer |
-| Localised `target_name` | `add action X to Y` / `remove action X from Y` target a specific nonterminal | `target_name` used as filter: only matched nodes whose type matches `target_name` receive the action. Targeting is achieved via path expression + node identity filtering, not via the Neverlang agent mechanism | Behavioral equivalence; mechanistic difference |
+| Localised `target_name` | `add/remove/set specialized action` target a specific nonterminal | `target_name` used as filter: only matched nodes whose type matches `target_name` receive the action. Targeting is achieved via path expression + node identity filtering, not via the Neverlang agent mechanism | Behavioral equivalence; mechanistic difference |
 | Event subscriptions | Paper links event → feature → micro-language context | `Subscription.micro_language` and `Subscription.context` fields defined but unused; event→adaptation link works through `adaptation_script` directly | Simpler model; the script itself carries full context |
 | Localised adaptation model | Neverlang attaches "agents" to AST/PT nodes that intercept dispatch | We wrap action handlers with node-identity closures (`_make_node_filtered_action`); this requires reusing the same parse tree instance — reparsing creates new node objects and breaks identity | Documented engineering tradeoff; behavioral equivalence confirmed by study 3 (Mandelbrot localised parallelisation) |
+| `parfor` execution | Real multi-core speedup (44/31/21%) | Same-thread execution recording a `parallel` mode marker | Python GIL; the adaptation mechanism, not the speedup, is what is reproduced |
+| Internal SM events | Semantic actions inside Neverlang slices | Callables in `__sm_events__` + `__sm_on_enter__` hooks (runner support) | Our runner re-visits stored AST nodes; adapted semantics need non-AST events |
 
 ## Summary
 
 | Test suite | Tests | Pass rate | What it proves |
 |---|---|---|---|
-| [`test_paper_io.py`](../tests/test_paper_io.py) | 15 | 100% | Same inputs produce same outputs as described in paper |
+| [`test_paper_io.py`](../tests/test_paper_io.py) | 20 | 100% | Same inputs produce same outputs as described in paper |
 | [`test_paper_exact_match.py`](../tests/test_paper_exact_match.py) | 19 | 100% | Specific values from paper text are reproduced exactly |
 | [`test_paper_conformance.py`](../tests/test_paper_conformance.py) | 54 | 100% | Architectural and behavioral properties hold |
-| **Total** | **88** | **100%** | |
+| **Total** | **93** | **100%** | |
 
 **Caveat:** All verification is against the paper's text. The original Neverlang/Java source code was never published. We cannot guarantee bit-for-bit equivalence with the original implementation — only that our system behaves as the paper describes.
 
@@ -233,6 +273,6 @@ All 12 operations from Table 1 parse correctly in our μDA grammar:
 
 This is a **paper-faithful reimplementation** — behavioral equivalence at the level of architecture, studies, and DSL semantics. It is **not** a mechanistic port of the Neverlang runtime. Specific distinctions:
 
-- **Behavioral equivalence** (confirmed): all three studies produce the same outputs as the paper describes; all 12 Table 1 operations are parsed; system-wide and localised adaptation modes work as specified.
-- **Mechanistic differences** (documented above): localised dispatch uses handler wrapping instead of PT agents; `endemic` scoping is not enforced; event→micro-language link is simplified.
-- **Grammar coverage**: all Table 1 forms including `production` (as `nt` synonym) are accepted. The `redo` operation supports both `from «node»` and `role «name»` optional arguments.
+- **Behavioral equivalence** (confirmed): all three studies produce the same outputs as the paper describes; all 12 Table 1 operations are parsed; system-wide and localised adaptation modes work as specified, including mid-run adaptation at update points (Sect. 4.2) and unchanged-program seamless adaptation (Fig. 2(c)).
+- **Mechanistic differences** (documented above): localised dispatch uses handler wrapping instead of PT agents; `endemic` scoping is not enforced; event→micro-language link is simplified; `parfor` records a mode marker rather than achieving real multi-core speedup (Python GIL).
+- **Grammar coverage**: all Table 1 forms are accepted, including `production` as a binding distinct from `nt` (both resolve to the rule name here) and bare (unwrapped) context definitions as used in Listings 6(b) and 8. The `redo` operation supports `from «node»` and optional `in role «name»`.

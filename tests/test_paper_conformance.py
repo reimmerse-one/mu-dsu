@@ -309,12 +309,12 @@ class TestTable1_MuDaDSL:
         assert m.role == "r"
 
     def test_manipulation_set_specialized(self):
-        """Table 1: 'set specialized action for «id» to «id» in role «name» ;'"""
-        script = 'context { slice x: s.s; } when n occurs { set specialized action for nt to act in role r; }'
+        """Table 1: 'set specialized action «id1» [to «id2»] in role «name» ;'"""
+        script = 'context { slice x: s.s; } when n occurs { set specialized action act to nt in role r; }'
         result = self.parser.parse(script)
         m = result.clauses[0].manipulations[0]
         assert isinstance(m, SetSpecialized)
-        assert m.nonterminal_name == "nt"
+        assert m.target_name == "nt"
         assert m.action_name == "act"
         assert m.role == "r"
 
@@ -578,7 +578,7 @@ class TestListing8_ForToParfor:
                 action parforAct : for_stmt from module calc.par_for_loop role execution;
             }
             when for1 << for2 | for2 occurs {
-                set specialized action for for2 to parforAct in role execution;
+                set specialized action parforAct to for2 in role execution;
             }
         """)
         assert isinstance(result.clauses[0], WhenClause)

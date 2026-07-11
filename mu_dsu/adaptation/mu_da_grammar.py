@@ -7,11 +7,15 @@ MU_DA_GRAMMAR = r"""
     start: context_section clause+
 
     // --- Context ---
+    // The paper's listings (6b, 8) have bare context definitions; the
+    // braced "context { ... }" wrapper is an optional extension of ours.
     context_section: "context" "{" context_def+ "}"
-    context_def: slice_def | nt_def | action_def
+        | context_def+
+    context_def: slice_def | production_def | nt_def | action_def
 
     slice_def: ENDEMIC? "slice" name_list ":" QUALIFIED_NAME ";"
-    nt_def: ("nt" | "production") name_list ":" NAME "from" "module" QUALIFIED_NAME ";"
+    production_def: "production" name_list ":" NAME "from" "module" QUALIFIED_NAME ";"
+    nt_def: "nt" name_list ":" NAME "from" "module" QUALIFIED_NAME ";"
     action_def: "action" NAME ":" NAME "from" "module" QUALIFIED_NAME "role" NAME ";"
 
     name_list: NAME ("," NAME)*
@@ -27,7 +31,8 @@ MU_DA_GRAMMAR = r"""
     replace_slice: "replace" "slice" NAME "with" NAME ";"
     redo_role: "redo" redo_from? redo_role_name? ";"
     redo_from: "from" NAME
-    redo_role_name: "role" NAME
+    // Table 1 writes "redo [in role «name»]"; Listing 6(b) omits the "in"
+    redo_role_name: "in"? "role" NAME
 
     // --- Localised ---
     when_clause: "when" match_expr "occurs" "{" manipulation+ "}"
@@ -51,7 +56,9 @@ MU_DA_GRAMMAR = r"""
     remove_action: "remove" "action" NAME remove_target? "in" "role" NAME ";"
     remove_target: "from" NAME
 
-    set_specialized: "set" "specialized" "action" "for" NAME "to" NAME "in" "role" NAME ";"
+    // Table 1: set specialized action «id1» [to «id2»] in role «name» ;
+    set_specialized: "set" "specialized" "action" NAME set_target? "in" "role" NAME ";"
+    set_target: "to" NAME
 
     // --- Terminals ---
     NAME: /[a-zA-Z_][a-zA-Z0-9_]*/

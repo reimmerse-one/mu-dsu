@@ -17,7 +17,11 @@ class SliceBinding:
 
 @dataclass
 class NonterminalBinding:
-    """nt for1,_,_ : Rule from module Mod;"""
+    """nt for1,_,_ : Rule from module Mod;
+
+    Also produced by the Table 1 'production' binding, which binds a whole
+    rule to a name — in this implementation both resolve to the rule name.
+    """
     names: list[str]
     rule_name: str
     module_name: str
@@ -68,10 +72,13 @@ class RemoveAction:
 
 @dataclass
 class SetSpecialized:
-    """set specialized action for X to Y in role R;"""
-    nonterminal_name: str
+    """set specialized action X [to Y] in role R; (Table 1)
+
+    If target_name is omitted, the action applies to the matched node.
+    """
     action_name: str
     role: str
+    target_name: str | None = None
 
 
 # --- Matching Expressions ---
